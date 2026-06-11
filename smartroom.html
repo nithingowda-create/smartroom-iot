@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartRoom – IoT Lighting & Fan Control</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+
+<style>
+/* ══════════════════════════════════════════
+   CSS VARIABLES & RESET
+══════════════════════════════════════════ */
+:root {
+  --bg: #f0f6ff;
+  --bg2: #e4effe;
+  --surface: #ffffff;
+  --surface2: #f7faff;
+  --border: #c8deff;
+  --text: #0d1f3c;
+  --text2: #3a5a8c;
+  --accent: #1a6fe8;
+  --accent2: #0047b3;
+  --accent-light: #ddeeff;
+  --green: #0fa36e;
+  --red: #e03e3e;
+  --yellow: #f5a623;
+  --shadow: 0 4px 32px rgba(26,111,232,0.10);
+  --radius: 18px;
+  --transition: all 0.35s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"] {
+  --bg: #0a1628;
+  --bg2: #0f1e38;
+  --surface: #142040;
+  --surface2: #1a2a52;
+  --border: #213560;
+  --text: #e8f0ff;
+  --text2: #7aa4e0;
+  --accent: #4a9eff;
+  --accent2: #2276dd;
+  --accent-light: #1a3060;
+  --shadow: 0 4px 32px rgba(74,158,255,0.12);
+}
+[data-accessible="true"] {
+  font-size: 118%;
+  --radius: 12px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  transition: var(--transition);
+  overflow-x: hidden;
+}
+
+/* ══════════════════════════════════════════
+   SCROLL PROGRESS BAR
+══════════════════════════════════════════ */
+#scrollBar {
+  position: fixed; top: 68px; left: 0; height: 3px; z-index: 99;
+  background: linear-gradient(90deg, var(--accent), #0099ff, var(--green));
+  width: 0%; transition: width 0.1s linear;
+}
+
+/* ══════════════════════════════════════════
+   FLOATING PARTICLES
+══════════════════════════════════════════ */
+.particles { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.particle {
+  position: absolute; border-radius: 50%; opacity: 0;
+  animation: floatUp 8s ease-in infinite;
+}
+@keyframes floatUp {
+  0%   { opacity: 0; transform: translateY(100vh) scale(0.3); }
+  10%  { opacity: 0.6; }
+  90%  { opacity: 0.2; }
+  100% { opacity: 0; transform: translateY(-10vh) scale(1); }
+}
+
+/* ══════════════════════════════════════════
+   NAV
+══════════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 5vw; height: 68px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  animation: navSlide 0.6s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes navSlide { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.nav-logo {
+  font-family: 'Sora', sans-serif;
+  font-weight: 800; font-size: 1.15rem;
+  color: var(--accent);
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none;
+}
+.nav-logo span { color: var(--text); }
+.nav-links { display: flex; gap: 6px; align-items: center; list-style: none; }
+.nav-links a {
+  text-decoration: none; color: var(--text2);
+  font-size: 0.88rem; font-weight: 500;
+  padding: 7px 13px; border-radius: 8px;
+  transition: var(--transition);
+}
+.nav-links a:hover { background: var(--accent-light); color: var(--accent); }
+.nav-controls { display: flex; gap: 10px; align-items: center; }
+.icon-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px;
+  cursor: pointer; font-size: 0.8rem; font-weight: 600;
+  color: var(--text2); transition: var(--transition);
+  display: flex; align-items: center; gap: 6px;
+}
+.icon-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.hamburger { display: none; flex-direction: column; gap: 5px; cursor: pointer; background: none; border: none; padding: 8px; }
+.hamburger span { width: 24px; height: 2px; background: var(--text); border-radius: 2px; transition: var(--transition); display: block; }
+
+/* ══════════════════════════════════════════
+   FIREBASE BANNER
+══════════════════════════════════════════ */
+#firebaseBanner {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 98;
+  padding: 10px 24px;
+  background: rgba(224,62,62,0.08);
+  border-top: 1px solid rgba(224,62,62,0.25);
+  color: var(--red);
+  font-size: 0.82rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: var(--transition);
+}
+#firebaseBanner a { color: var(--accent); text-decoration: underline; }
+
+/* ══════════════════════════════════════════
+   HERO
+══════════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 120px 6vw 100px;
+  position: relative; overflow: hidden;
+  background: linear-gradient(160deg, var(--bg) 0%, var(--bg2) 100%);
+}
+.hero-blob {
+  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none;
+}
+.blob1 { width: 600px; height: 600px; background: #5ba8ff; top: -150px; left: -200px; animation: blobFloat1 9s ease-in-out infinite alternate; }
+.blob2 { width: 400px; height: 400px; background: #1a6fe8; bottom: -80px; right: -100px; animation: blobFloat2 11s ease-in-out infinite alternate; }
+@keyframes blobFloat1 { from { transform: translate(0,0) scale(1); } to { transform: translate(40px,30px) scale(1.08); } }
+@keyframes blobFloat2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-30px,20px) scale(1.05); } }
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent-light); color: var(--accent);
+  border: 1px solid var(--border); border-radius: 50px;
+  padding: 8px 20px; font-size: 0.82rem; font-weight: 600;
+  margin-bottom: 28px; letter-spacing: 0.04em;
+  animation: fadeDown 0.7s ease both, badgeFloat 3s 1s ease-in-out infinite;
+}
+@keyframes fadeDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes badgeFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.hero h1 {
+  font-family: 'Sora', sans-serif;
+  font-size: clamp(2.2rem, 5.5vw, 4.2rem);
+  font-weight: 800; line-height: 1.12;
+  color: var(--text);
+  max-width: 900px;
+  animation: fadeUp 0.8s 0.1s ease both;
+}
+.hero h1 .highlight {
+  background: linear-gradient(135deg, var(--accent), #0099ff);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero h1 .cursor {
+  display: inline-block; width: 3px; background: var(--accent);
+  margin-left: 4px; animation: blink 1s step-end infinite;
+}
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+.hero-tagline {
+  margin: 22px 0 38px;
+  font-size: clamp(1rem, 2vw, 1.22rem);
+  color: var(--text2); font-weight: 300; max-width: 600px;
+  animation: fadeUp 0.8s 0.2s ease both;
+}
+.hero-btns { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; animation: fadeUp 0.8s 0.3s ease both; }
+
+.btn-primary {
+  position: relative; overflow: hidden;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff; font-family: 'Sora', sans-serif;
+  font-size: 1rem; font-weight: 700;
+  padding: 16px 34px; border-radius: 14px; border: none;
+  cursor: pointer; transition: var(--transition);
+  box-shadow: 0 8px 24px rgba(26,111,232,0.35);
+  text-decoration: none; display: inline-block;
+}
+.btn-primary::after {
+  content: ''; position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+  animation: btnShimmer 2.5s ease-in-out infinite;
+}
+@keyframes btnShimmer { 0% { left: -100%; } 60%,100% { left: 150%; } }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(26,111,232,0.45); }
+
+.btn-outline {
+  background: var(--surface); color: var(--accent);
+  font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 600;
+  padding: 16px 34px; border-radius: 14px;
+  border: 2px solid var(--border); cursor: pointer;
+  transition: var(--transition); text-decoration: none; display: inline-block;
+}
+.btn-outline:hover { border-color: var(--accent); background: var(--accent-light); }
+
+.hero-stats {
+  display: flex; gap: 40px; margin-top: 70px; flex-wrap: wrap; justify-content: center;
+  animation: fadeUp 0.8s 0.4s ease both;
+}
+.stat { text-align: center; }
+.stat-num {
+  font-family: 'Sora', sans-serif; font-size: 2rem; font-weight: 800; color: var(--accent);
+  animation: numShine 3s ease-in-out infinite;
+}
+@keyframes numShine { 0%,100% { opacity: 1; } 50% { opacity: 0.7; text-shadow: 0 0 20px rgba(26,111,232,0.5); } }
+.stat-label { font-size: 0.82rem; color: var(--text2); margin-top: 3px; }
+
+/* ══════════════════════════════════════════
+   SECTIONS
+══════════════════════════════════════════ */
+section { padding: 90px 6vw; position: relative; }
+section::before {
+  content: ''; display: block; width: 60px; height: 3px;
+  background: linear-gradient(90deg, var(--accent), #0099ff);
+  border-radius: 3px; margin-bottom: 8px;
+  animation: dividerGrow 0.8s ease both;
+}
+@keyframes dividerGrow { from { width: 0; opacity: 0; } to { width: 60px; opacity: 1; } }
+
+.section-tag {
+  display: inline-block;
+  background: var(--accent-light); color: var(--accent);
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 5px 14px; border-radius: 50px;
+  margin-bottom: 16px;
+  animation: tagBounce 0.6s cubic-bezier(.36,.07,.19,.97) both;
+}
+@keyframes tagBounce { 0% { opacity: 0; transform: scale(0.5); } 70% { transform: scale(1.1); } 100% { opacity: 1; transform: scale(1); } }
+
+.section-title {
+  font-family: 'Sora', sans-serif;
+  font-size: clamp(1.7rem, 3.5vw, 2.6rem);
+  font-weight: 800; line-height: 1.2; margin-bottom: 14px;
+  background: linear-gradient(90deg, var(--text) 0%, var(--accent) 40%, var(--text) 60%, var(--text) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  animation: shimmerText 4s linear infinite;
+}
+@keyframes shimmerText { from { background-position: 200% center; } to { background-position: -200% center; } }
+.section-sub { color: var(--text2); font-size: 1.05rem; max-width: 560px; line-height: 1.7; }
+
+/* ══════════════════════════════════════════
+   REVEAL
+══════════════════════════════════════════ */
+.reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ══════════════════════════════════════════
+   ABOUT
+══════════════════════════════════════════ */
+#about { background: var(--surface); }
+.about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; align-items: center; margin-top: 50px; }
+.about-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px;
+  transition: var(--transition);
+  animation: cardPop 0.5s ease both;
+}
+.about-card:nth-child(1) { animation-delay: 0.1s; }
+.about-card:nth-child(2) { animation-delay: 0.25s; }
+.about-card:nth-child(3) { animation-delay: 0.4s; }
+@keyframes cardPop { from { opacity: 0; transform: scale(0.92) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.about-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+.about-card h3 { font-family: 'Sora', sans-serif; font-size: 1.15rem; font-weight: 700; margin-bottom: 12px; color: var(--accent); }
+.about-card p { color: var(--text2); line-height: 1.75; font-size: 0.97rem; }
+.about-users { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.user-chip {
+  background: var(--accent-light); color: var(--accent);
+  border-radius: 50px; padding: 7px 16px; font-size: 0.85rem; font-weight: 600;
+}
+.about-visual { display: flex; flex-direction: column; gap: 16px; }
+.stat-card {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff; border-radius: var(--radius); padding: 28px;
+  display: flex; align-items: center; gap: 20px;
+  transition: var(--transition);
+  animation: slideFromRight 0.6s ease both;
+}
+.stat-card:nth-child(1) { animation-delay: 0.1s; }
+.stat-card:nth-child(2) { animation-delay: 0.25s; }
+.stat-card:nth-child(3) { animation-delay: 0.4s; }
+@keyframes slideFromRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+.stat-card:hover { transform: translateX(6px) scale(1.02); box-shadow: 0 12px 40px rgba(26,111,232,0.3); }
+.stat-card-icon { font-size: 2.4rem; }
+.stat-card-num { font-family: 'Sora', sans-serif; font-size: 2rem; font-weight: 800; }
+.stat-card-label { font-size: 0.88rem; opacity: 0.85; }
+
+/* ══════════════════════════════════════════
+   FEATURES
+══════════════════════════════════════════ */
+#features { background: var(--bg2); }
+.features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px; margin-top: 50px; }
+.feature-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px;
+  transition: var(--transition); position: relative; overflow: hidden;
+  animation: cardPop 0.5s ease both;
+}
+.feature-card:nth-child(1) { animation-delay: 0.05s; }
+.feature-card:nth-child(2) { animation-delay: 0.15s; }
+.feature-card:nth-child(3) { animation-delay: 0.25s; }
+.feature-card:nth-child(4) { animation-delay: 0.35s; }
+.feature-card:nth-child(5) { animation-delay: 0.45s; }
+.feature-card:nth-child(6) { animation-delay: 0.55s; }
+.feature-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), #0099ff);
+  transform: scaleX(0); transform-origin: left; transition: var(--transition);
+}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card:hover { transform: translateY(-5px); box-shadow: var(--shadow); }
+.feature-card:hover .feature-icon { animation: iconBounce 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes iconBounce { 0% { transform: scale(1); } 30% { transform: scale(1.3) rotate(-5deg); } 60% { transform: scale(0.95) rotate(3deg); } 100% { transform: scale(1) rotate(0); } }
+.feature-icon {
+  width: 56px; height: 56px; border-radius: 14px;
+  background: var(--accent-light);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; margin-bottom: 18px;
+}
+.feature-card h3 { font-family: 'Sora', sans-serif; font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; }
+.feature-card p { color: var(--text2); font-size: 0.93rem; line-height: 1.7; }
+
+/* ══════════════════════════════════════════
+   ARCHITECTURE
+══════════════════════════════════════════ */
+#architecture { background: var(--surface); }
+.arch-diagram {
+  margin-top: 50px; background: var(--surface2);
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 40px; text-align: center;
+}
+.arch-flow {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; flex-wrap: wrap; margin: 30px 0;
+}
+.arch-node {
+  background: var(--surface); border: 2px solid var(--border);
+  border-radius: 14px; padding: 18px 22px; text-align: center;
+  min-width: 120px; transition: var(--transition);
+  animation: nodeFade 0.6s ease both;
+}
+.arch-node:nth-child(1) { animation-delay: 0.1s; }
+.arch-node:nth-child(3) { animation-delay: 0.25s; }
+.arch-node:nth-child(5) { animation-delay: 0.4s; }
+.arch-node:nth-child(7) { animation-delay: 0.55s; }
+.arch-node:nth-child(9) { animation-delay: 0.7s; }
+@keyframes nodeFade { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+.arch-node:hover { border-color: var(--accent); box-shadow: var(--shadow); transform: scale(1.04); }
+.arch-node .node-icon { font-size: 2rem; margin-bottom: 8px; }
+.arch-node .node-label { font-family: 'Sora', sans-serif; font-size: 0.82rem; font-weight: 700; color: var(--text); }
+.arch-node .node-sub { font-size: 0.72rem; color: var(--text2); margin-top: 3px; }
+.arch-arrow {
+  font-size: 1.5rem; color: var(--accent);
+  padding: 0 8px; font-weight: 700;
+  animation: arrowPulse 1.5s ease-in-out infinite;
+}
+@keyframes arrowPulse { 0%,100% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(5px); opacity: 0.5; } }
+.arch-tech {
+  display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 30px;
+}
+.tech-badge {
+  background: var(--accent-light); color: var(--accent);
+  border-radius: 8px; padding: 8px 16px;
+  font-size: 0.83rem; font-weight: 600; border: 1px solid var(--border);
+  animation: badgePop 0.4s ease both;
+}
+.tech-badge:nth-child(1) { animation-delay: 0.05s; }
+.tech-badge:nth-child(2) { animation-delay: 0.1s; }
+.tech-badge:nth-child(3) { animation-delay: 0.15s; }
+.tech-badge:nth-child(4) { animation-delay: 0.2s; }
+.tech-badge:nth-child(5) { animation-delay: 0.25s; }
+.tech-badge:nth-child(6) { animation-delay: 0.3s; }
+.tech-badge:nth-child(7) { animation-delay: 0.35s; }
+.tech-badge:nth-child(8) { animation-delay: 0.4s; }
+@keyframes badgePop { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
+
+/* ══════════════════════════════════════════
+   DEMO / DASHBOARD
+══════════════════════════════════════════ */
+#demo { background: var(--bg2); }
+.dashboard-wrapper { margin-top: 50px; display: flex; flex-direction: column; gap: 22px; }
+.dash-top-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 22px; }
+.dash-bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+.dash-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 28px;
+  position: relative; overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  perspective: 1000px; transform-style: preserve-3d;
+  animation: dashCardIn 0.6s cubic-bezier(.22,1,.36,1) both;
+}
+.dash-top-row .dash-card:nth-child(1) { animation-delay: 0.1s; }
+.dash-top-row .dash-card:nth-child(2) { animation-delay: 0.22s; }
+.dash-top-row .dash-card:nth-child(3) { animation-delay: 0.34s; }
+.dash-bottom-row .dash-card:nth-child(1) { animation-delay: 0.46s; }
+.dash-bottom-row .dash-card:nth-child(2) { animation-delay: 0.58s; }
+@keyframes dashCardIn { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.dash-card:hover { transform: translateY(-5px); box-shadow: 0 16px 48px rgba(26,111,232,0.15); }
+.dash-card::after {
+  content: ''; position: absolute; inset: 0; border-radius: 22px;
+  background: linear-gradient(135deg, transparent 40%, rgba(26,111,232,0.08) 100%);
+  opacity: 0; transition: opacity 0.4s ease; pointer-events: none;
+}
+.dash-card:hover::after { opacity: 1; }
+
+/* CARD HEADER */
+.card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.card-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 1.05rem; color: var(--text); }
+.card-subtitle { font-size: 0.8rem; color: var(--text2); margin-top: 3px; transition: var(--transition); }
+.card-icon-wrap {
+  width: 60px; height: 60px; border-radius: 16px;
+  background: var(--accent-light);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent); flex-shrink: 0; transition: var(--transition);
+}
+.status-pill {
+  margin-left: auto; font-size: 0.75rem; font-weight: 800;
+  padding: 5px 13px; border-radius: 50px;
+  background: rgba(224,62,62,0.12); color: var(--red);
+  border: 1px solid rgba(224,62,62,0.25);
+  transition: var(--transition); letter-spacing: 0.04em;
+}
+.status-pill.on { background: rgba(15,163,110,0.12); color: var(--green); border-color: rgba(15,163,110,0.3); }
+
+/* LIGHT CARD */
+.card-glow {
+  position: absolute; inset: -40px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,220,80,0) 0%, rgba(255,220,80,0) 100%);
+  pointer-events: none; transition: background 0.6s ease;
+}
+.card-glow.on { background: radial-gradient(circle at 50% 0%, rgba(255,220,80,0.18) 0%, transparent 70%); }
+.fan-glow.on { background: radial-gradient(circle at 50% 0%, rgba(26,111,232,0.15) 0%, transparent 70%); }
+
+.big-toggle {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 16px;
+  background: var(--surface2); border: 2px solid var(--border);
+  border-radius: 16px; padding: 16px 20px;
+  cursor: pointer; transition: var(--transition);
+  font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 700; color: var(--text);
+}
+.big-toggle.on { background: linear-gradient(135deg,#fff8d6,#fff3a0); border-color: #f5c518; color: #7a5c00; }
+[data-theme="dark"] .big-toggle.on { background: linear-gradient(135deg,#2a2000,#3a3000); border-color: #c9a200; color: #ffd54f; }
+.big-toggle:hover { transform: translateY(-2px); }
+.toggle-track {
+  width: 56px; height: 28px; border-radius: 14px;
+  background: #ddd; border: 2px solid #ccc;
+  position: relative; display: flex; align-items: center;
+  transition: var(--transition); flex-shrink: 0;
+}
+.big-toggle.on .toggle-track { background: #f5c518; border-color: #d4a800; }
+.toggle-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: #fff;
+  position: absolute; left: 3px;
+  transition: left 0.3s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.big-toggle.on .toggle-thumb { left: 29px; }
+.light-card.on .card-icon-wrap { background: #fff3c4; color: #c9a200; animation: lightPop 0.4s ease; }
+@keyframes lightPop { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.voice-hint { margin-top: 16px; font-size: 0.8rem; color: var(--text2); text-align: center; }
+
+/* FAN CARD */
+.fan-blade-wrap { animation: none; }
+.fan-blade-wrap.spinning-1 { animation: spin 2.5s linear infinite; }
+.fan-blade-wrap.spinning-2 { animation: spin 1.6s linear infinite; }
+.fan-blade-wrap.spinning-3 { animation: spin 1.0s linear infinite; }
+.fan-blade-wrap.spinning-4 { animation: spin 0.65s linear infinite; }
+.fan-blade-wrap.spinning-5 { animation: spin 0.35s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.fan-card.on .card-icon-wrap { background: rgba(26,111,232,0.15); color: var(--accent); }
+.speed-display { display: flex; justify-content: center; margin: 4px 0 12px; }
+.speed-arc-wrap { position: relative; display: inline-flex; flex-direction: column; align-items: center; }
+.speed-num {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  font-family: 'Sora', sans-serif; font-size: 2rem; font-weight: 800; color: var(--accent);
+  transition: var(--transition);
+}
+.speed-label-arc { font-size: 0.72rem; color: var(--text2); margin-top: -4px; font-weight: 600; }
+.fan-levels { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+.level-btn {
+  flex: 1; min-width: 44px; padding: 12px 6px; border-radius: 10px;
+  border: 2px solid var(--border); background: var(--surface2);
+  cursor: pointer; transition: var(--transition);
+  font-family: 'Sora', sans-serif; font-weight: 700; font-size: 0.88rem; color: var(--text);
+}
+.level-btn.active {
+  background: linear-gradient(135deg, #0099ff, var(--accent));
+  color: #fff; border-color: var(--accent);
+}
+.level-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+/* SOS CARD */
+.sos-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, var(--surface), #fff5f5);
+}
+[data-theme="dark"] .sos-card { background: linear-gradient(160deg, var(--surface), #2a0808); }
+.sos-ring-wrap { position: relative; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; }
+.sos-ring {
+  position: absolute; border-radius: 50%; border: 2px solid rgba(224,62,62,0.4);
+  animation: sosPulse 2s ease-out infinite;
+}
+.sos-ring.r1 { width: 60px; height: 60px; animation-delay: 0s; }
+.sos-ring.r2 { width: 80px; height: 80px; animation-delay: 0.5s; }
+.sos-ring.r3 { width: 100px; height: 100px; animation-delay: 1s; }
+@keyframes sosPulse { 0% { transform: scale(0.8); opacity: 0.8; } 100% { transform: scale(1.1); opacity: 0; } }
+.sos-center { font-size: 2rem; z-index: 1; }
+.emergency-btn {
+  width: 100%; padding: 18px; border-radius: 12px;
+  background: linear-gradient(135deg, #e03e3e, #b81c1c);
+  color: #fff; border: none; cursor: pointer;
+  font-family: 'Sora', sans-serif; font-size: 1.05rem; font-weight: 800;
+  transition: var(--transition); letter-spacing: 0.02em;
+  box-shadow: 0 6px 20px rgba(224,62,62,0.35);
+  margin-top: 16px; position: relative; overflow: hidden;
+}
+.emergency-btn:hover { transform: scale(1.03); box-shadow: 0 10px 28px rgba(224,62,62,0.45); }
+.emergency-btn:active { transform: scale(0.98); }
+
+/* STATUS CARD */
+.online-badge {
+  margin-left: auto; font-size: 0.75rem; font-weight: 700;
+  color: var(--green); background: rgba(15,163,110,0.1);
+  padding: 5px 12px; border-radius: 50px; border: 1px solid rgba(15,163,110,0.25);
+  display: flex; align-items: center; gap: 6px;
+}
+.online-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(15,163,110,0.2); } 50% { box-shadow: 0 0 0 8px rgba(15,163,110,0.08); } }
+.status-rows { display: flex; flex-direction: column; gap: 10px; }
+.status-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: var(--surface2); border-radius: 10px;
+  font-size: 0.85rem; color: var(--text2);
+  animation: slideInRow 0.4s ease both;
+}
+.status-row:nth-child(1) { animation-delay: 0.1s; }
+.status-row:nth-child(2) { animation-delay: 0.2s; }
+.status-row:nth-child(3) { animation-delay: 0.3s; }
+.status-row:nth-child(4) { animation-delay: 0.4s; }
+.status-row:nth-child(5) { animation-delay: 0.5s; }
+@keyframes slideInRow { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+.sval { font-weight: 700; color: var(--text2); }
+.sval.green { color: var(--green); }
+.data-bars { display: flex; align-items: flex-end; gap: 5px; height: 40px; }
+.data-bar {
+  flex: 1; background: linear-gradient(180deg, var(--accent), var(--accent2));
+  border-radius: 4px 4px 0 0; opacity: 0.7;
+  height: var(--h); animation: barBounce 1.8s ease-in-out infinite alternate;
+}
+@keyframes barBounce { from { height: var(--h); } to { height: calc(var(--h) * 0.4); } }
+
+/* VOICE CARD */
+.voice-pill {
+  margin-left: auto; font-size: 0.75rem; font-weight: 700;
+  padding: 5px 13px; border-radius: 50px;
+  background: var(--surface2); color: var(--text2);
+  border: 1px solid var(--border); transition: var(--transition);
+}
+.voice-pill.listening { background: rgba(15,163,110,0.12); color: var(--green); border-color: rgba(15,163,110,0.3); }
+.mic-area { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 6px 0 16px; }
+.mic-btn {
+  position: relative; width: 80px; height: 80px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; transition: var(--transition);
+  box-shadow: 0 6px 24px rgba(26,111,232,0.35);
+}
+.mic-btn:hover { transform: scale(1.08); box-shadow: 0 10px 32px rgba(26,111,232,0.45); }
+.mic-btn.active { background: linear-gradient(135deg, var(--green), #066644); box-shadow: 0 6px 24px rgba(15,163,110,0.4); }
+.mic-rings { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.mic-ring {
+  position: absolute; border-radius: 50%;
+  border: 2px solid rgba(26,111,232,0.4); opacity: 0;
+}
+.mic-ring.mr1 { inset: -12px; }
+.mic-ring.mr2 { inset: -22px; }
+.mic-btn.active .mic-ring.mr1 { animation: micRing 1.2s ease-out infinite; }
+.mic-btn.active .mic-ring.mr2 { animation: micRing 1.2s 0.4s ease-out infinite; }
+@keyframes micRing { 0% { opacity: 0.8; transform: scale(0.8); } 100% { opacity: 0; transform: scale(1.3); } }
+.mic-icon { position: relative; z-index: 1; }
+.waveform { display: flex; align-items: center; gap: 4px; height: 30px; }
+.waveform span {
+  display: block; width: 4px; border-radius: 3px;
+  background: var(--accent); height: 6px; transition: height 0.15s ease;
+}
+.waveform.active span { animation: wave 0.8s ease-in-out infinite alternate; }
+.waveform.active span:nth-child(1) { animation-delay: 0s; }
+.waveform.active span:nth-child(2) { animation-delay: 0.1s; }
+.waveform.active span:nth-child(3) { animation-delay: 0.2s; }
+.waveform.active span:nth-child(4) { animation-delay: 0.05s; }
+.waveform.active span:nth-child(5) { animation-delay: 0.15s; }
+.waveform.active span:nth-child(6) { animation-delay: 0.25s; }
+.waveform.active span:nth-child(7) { animation-delay: 0.08s; }
+@keyframes wave { from { height: 4px; } to { height: 24px; } }
+.transcript-box {
+  background: var(--surface2); border: 1.5px solid var(--border);
+  border-radius: 12px; padding: 12px 16px;
+  font-size: 0.9rem; color: var(--text2); min-height: 46px;
+  transition: var(--transition); line-height: 1.5;
+}
+.transcript-box.active { border-color: var(--accent); color: var(--text); }
+.voice-result { min-height: 22px; font-size: 0.88rem; font-weight: 700; color: var(--green); margin: 8px 0 12px; }
+.chip-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.v-chip {
+  background: var(--accent-light); color: var(--accent);
+  border-radius: 50px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; transition: var(--transition); border: 1px solid var(--border);
+}
+.v-chip:hover { background: var(--accent); color: #fff; border-color: var(--accent); transform: scale(1.05); }
+
+/* ══════════════════════════════════════════
+   CONTACT
+══════════════════════════════════════════ */
+#contact { background: var(--bg2); }
+.contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 50px; }
+.contact-form {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 36px;
+  animation: cardPop 0.6s 0.1s ease both;
+}
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 8px; color: var(--text2); }
+.form-group input, .form-group textarea {
+  width: 100%; padding: 14px 16px; border-radius: 10px;
+  border: 1.5px solid var(--border); background: var(--surface2);
+  color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.95rem;
+  transition: var(--transition); outline: none;
+}
+.form-group input:focus, .form-group textarea:focus {
+  border-color: var(--accent);
+  animation: focusRing 0.3s ease forwards;
+}
+@keyframes focusRing { from { box-shadow: 0 0 0 0 rgba(26,111,232,0.3); } to { box-shadow: 0 0 0 4px rgba(26,111,232,0.12); } }
+.form-group textarea { resize: vertical; min-height: 120px; }
+.contact-info { display: flex; flex-direction: column; gap: 20px; justify-content: center; }
+.info-item {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px;
+  animation: slideFromRight 0.5s ease both;
+}
+.info-item:nth-child(1) { animation-delay: 0.1s; }
+.info-item:nth-child(2) { animation-delay: 0.2s; }
+.info-item:nth-child(3) { animation-delay: 0.3s; }
+.info-item:nth-child(4) { animation-delay: 0.4s; }
+.info-icon { font-size: 1.5rem; }
+.info-text { font-size: 0.9rem; color: var(--text2); }
+.info-text strong { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
+
+/* ══════════════════════════════════════════
+   FOOTER
+══════════════════════════════════════════ */
+footer {
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 30px 6vw; text-align: center;
+  color: var(--text2); font-size: 0.87rem;
+  animation: fadeUp 0.8s ease both;
+  /* Extra bottom padding for firebase banner */
+  padding-bottom: 60px;
+}
+footer strong { color: var(--accent); }
+
+/* ══════════════════════════════════════════
+   NOTIFICATION
+══════════════════════════════════════════ */
+.notif {
+  position: fixed; bottom: 60px; right: 30px; z-index: 999;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 22px; box-shadow: var(--shadow);
+  font-size: 0.9rem; font-weight: 600; color: var(--text);
+  opacity: 0; transform: translateY(20px);
+  transition: all 0.4s ease; pointer-events: none;
+  max-width: 320px;
+}
+.notif.show { opacity: 1; transform: translateY(0); }
+
+/* ══════════════════════════════════════════
+   MOBILE
+══════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .hamburger { display: flex; }
+  .nav-links {
+    position: fixed; top: 68px; left: 0; right: 0;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-direction: column; padding: 20px; gap: 4px; display: none;
+  }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 12px 16px; font-size: 1rem; }
+  .about-grid, .contact-grid { grid-template-columns: 1fr; }
+  .arch-arrow { display: none; }
+  .arch-flow { gap: 16px; }
+  .dash-top-row { grid-template-columns: 1fr; }
+  .dash-bottom-row { grid-template-columns: 1fr; }
+}
+@media (min-width: 769px) and (max-width: 900px) {
+  .dash-top-row { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- SCROLL PROGRESS -->
+<div id="scrollBar"></div>
+
+<!-- FLOATING PARTICLES -->
+<div class="particles" id="particles"></div>
+
+<!-- ══════════════════════════════════════════
+     NAV
+══════════════════════════════════════════ -->
+<nav>
+  <a class="nav-logo" href="#">⚡ <span>Smart</span>Room</a>
+  <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#home" onclick="closeMenu()">Home</a></li>
+    <li><a href="#about" onclick="closeMenu()">About</a></li>
+    <li><a href="#features" onclick="closeMenu()">Features</a></li>
+    <li><a href="#architecture" onclick="closeMenu()">Architecture</a></li>
+    <li><a href="#demo" onclick="closeMenu()">Demo</a></li>
+    <li><a href="#contact" onclick="closeMenu()">Contact</a></li>
+  </ul>
+  <div class="nav-controls">
+    <button class="icon-btn" onclick="toggleAccessibility()" id="accessBtn" title="Accessibility Mode">♿ A+</button>
+    <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle Theme">🌙</button>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════
+     FIREBASE STATUS BANNER (FIXED — was missing in original)
+══════════════════════════════════════════ -->
+<div id="firebaseBanner">
+  <span id="firebaseBannerText">⚠️ Firebase not configured — running in Demo Mode. Replace firebaseConfig values in the script to enable real-time ESP32 sync.</span>
+  <a href="https://console.firebase.google.com/" target="_blank" rel="noopener">Set up Firebase →</a>
+</div>
+
+<!-- ══════════════════════════════════════════
+     HERO
+══════════════════════════════════════════ -->
+<section class="hero" id="home">
+  <div class="hero-blob blob1"></div>
+  <div class="hero-blob blob2"></div>
+  <div class="hero-badge">🔌 IoT · Accessibility · Smart Living</div>
+  <h1>Smart Room for<br><span class="highlight">Assistive Needs</span></h1>
+  <p class="hero-tagline">Empowering Independence Through Smart Technology — IoT-based Lighting &amp; Fan Control for Every Ability</p>
+  <div class="hero-btns">
+    <a href="#demo" class="btn-primary">🖥️ View Live Dashboard</a>
+    <a href="#about" class="btn-outline">Learn More →</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-num">3+</div><div class="stat-label">Control Methods</div></div>
+    <div class="stat"><div class="stat-num">ESP32</div><div class="stat-label">Microcontroller</div></div>
+    <div class="stat"><div class="stat-num">Real-Time</div><div class="stat-label">Monitoring</div></div>
+    <div class="stat"><div class="stat-num">Firebase</div><div class="stat-label">Cloud Backend</div></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     ABOUT
+══════════════════════════════════════════ -->
+<section id="about">
+  <div class="reveal">
+    <div class="section-tag">About the Project</div>
+    <h2 class="section-title">Bridging Technology<br>with Accessibility</h2>
+    <p class="section-sub">Designed with empathy, built with precision — a smart room system that adapts to the user, not the other way around.</p>
+  </div>
+  <div class="about-grid reveal">
+    <div>
+      <div class="about-card" style="margin-bottom:20px">
+        <h3>🚩 Problem Statement</h3>
+        <p>Mobility-challenged individuals — including students with physical disabilities and elderly residents — often struggle with conventional switches and controls. Standard room appliances are inaccessible, fostering dependence and reducing quality of life. There is a critical need for an intuitive, remote-operated control system that restores independence.</p>
+      </div>
+      <div class="about-card" style="margin-bottom:20px">
+        <h3>💡 Our Solution</h3>
+        <p>A fully IoT-integrated Smart Room system that allows users to control lights and fans via a web dashboard, voice commands, and mobile devices. Built on ESP8266/ESP32 with Firebase cloud sync, it provides real-time feedback and emergency alert capabilities, all within a beautifully accessible interface.</p>
+      </div>
+      <div class="about-card">
+        <h3>👥 Target Users</h3>
+        <div class="about-users">
+          <span class="user-chip">♿ Mobility-Impaired Students</span>
+          <span class="user-chip">👴 Elderly People</span>
+          <span class="user-chip">🏥 Rehabilitation Centers</span>
+          <span class="user-chip">🏠 Assisted Living</span>
+        </div>
+      </div>
+    </div>
+    <div class="about-visual">
+      <div class="stat-card">
+        <div class="stat-card-icon">🌐</div>
+        <div>
+          <div class="stat-card-num">Web + Voice</div>
+          <div class="stat-card-label">Multi-modal control via browser &amp; voice commands</div>
+        </div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#0fa36e,#066644)">
+        <div class="stat-card-icon">⚡</div>
+        <div>
+          <div class="stat-card-num">Real-Time</div>
+          <div class="stat-card-label">Instant device status via Firebase cloud sync</div>
+        </div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#e03e3e,#9c1c1c)">
+        <div class="stat-card-icon">🚨</div>
+        <div>
+          <div class="stat-card-num">Emergency</div>
+          <div class="stat-card-label">One-tap SOS alert system for immediate assistance</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     FEATURES
+══════════════════════════════════════════ -->
+<section id="features">
+  <div class="reveal">
+    <div class="section-tag">Core Features</div>
+    <h2 class="section-title">Everything You Need<br>to Control Your Space</h2>
+    <p class="section-sub">Six powerful features designed around accessibility, comfort, and safety.</p>
+  </div>
+  <div class="features-grid reveal">
+    <div class="feature-card">
+      <div class="feature-icon">💡</div>
+      <h3>Remote Light Control</h3>
+      <p>Toggle lights ON or OFF from anywhere using the web dashboard, voice commands, or mobile interface — no physical switches required. Designed with large, accessible buttons for ease of use.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🌀</div>
+      <h3>Fan Speed Adjustment</h3>
+      <p>Control fan speed across 5 levels with smooth controls. The system uses PWM-regulated relays to precisely adjust fan RPM, providing tailored comfort for every user preference.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📡</div>
+      <h3>Real-Time Status Monitoring</h3>
+      <p>Live device status is synchronized via Firebase, displaying color-coded indicators (Green = ON, Red = OFF) on the dashboard. Status updates reflect within milliseconds of any change.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎙️</div>
+      <h3>Voice Assistant Integration</h3>
+      <p>Control all appliances hands-free using the browser-based Web Speech API. Simply say "Turn on the light" or "Set fan to level 3" — fully accessible voice control built right in.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🚨</div>
+      <h3>Emergency Alert Feature</h3>
+      <p>A dedicated SOS button immediately sends an alert to caregivers via Firebase. Designed for rapid response in critical situations with a single tap or voice command.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📱</div>
+      <h3>Mobile-First Dashboard</h3>
+      <p>A fully responsive web dashboard accessible from smartphones, tablets, and desktops. High-contrast mode, large touch targets, and accessibility-first design ensure usability for everyone.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     ARCHITECTURE
+══════════════════════════════════════════ -->
+<section id="architecture">
+  <div class="reveal">
+    <div class="section-tag">System Architecture</div>
+    <h2 class="section-title">How It All<br>Comes Together</h2>
+    <p class="section-sub">A layered IoT architecture connecting physical hardware to the cloud and user interface seamlessly.</p>
+  </div>
+  <div class="arch-diagram reveal">
+    <div class="arch-flow">
+      <div class="arch-node">
+        <div class="node-icon">📱</div>
+        <div class="node-label">User Interface</div>
+        <div class="node-sub">Web / Mobile / Voice</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node">
+        <div class="node-icon">☁️</div>
+        <div class="node-label">Firebase</div>
+        <div class="node-sub">Realtime Database</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node">
+        <div class="node-icon">🔌</div>
+        <div class="node-label">ESP32</div>
+        <div class="node-sub">Microcontroller</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node">
+        <div class="node-icon">⚡</div>
+        <div class="node-label">Relay Module</div>
+        <div class="node-sub">4-Channel Relay</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node">
+        <div class="node-icon">💡</div>
+        <div class="node-label">Appliances</div>
+        <div class="node-sub">Light &amp; Fan</div>
+      </div>
+    </div>
+    <div class="arch-tech">
+      <span class="tech-badge">ESP8266 / ESP32</span>
+      <span class="tech-badge">Firebase RTDB</span>
+      <span class="tech-badge">4-CH Relay Module</span>
+      <span class="tech-badge">Web Speech API</span>
+      <span class="tech-badge">HTML / CSS / JS</span>
+      <span class="tech-badge">Wi-Fi 802.11 b/g/n</span>
+      <span class="tech-badge">PWM Control</span>
+      <span class="tech-badge">Arduino IDE</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     DEMO / DASHBOARD
+══════════════════════════════════════════ -->
+<section id="demo">
+  <div class="reveal">
+    <div class="section-tag">Live Demo</div>
+    <h2 class="section-title">Try the Interactive<br>Control Panel</h2>
+    <p class="section-sub">Simulate the Smart Room dashboard below. Toggle lights, adjust fan speed, test voice commands, and trigger the emergency alert.</p>
+  </div>
+
+  <div class="dashboard-wrapper reveal">
+
+    <!-- TOP ROW: LIGHT + FAN + SOS -->
+    <div class="dash-top-row">
+
+      <!-- LIGHT CARD -->
+      <div class="dash-card light-card" id="lightCard">
+        <div class="card-glow" id="lightGlow"></div>
+        <div class="card-header">
+          <div class="card-icon-wrap" id="lightIconWrap">
+            <svg id="lightSVG" viewBox="0 0 64 64" width="48" height="48">
+              <circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="2" opacity="0.2"/>
+              <ellipse cx="32" cy="28" rx="13" ry="15" fill="currentColor" opacity="0.9"/>
+              <rect x="26" y="42" width="12" height="4" rx="2" fill="currentColor"/>
+              <rect x="27" y="46" width="10" height="3" rx="1.5" fill="currentColor" opacity="0.7"/>
+              <line x1="32" y1="6" x2="32" y2="2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="50" y1="14" x2="53" y2="11" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="14" y1="14" x2="11" y2="11" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="58" y1="32" x2="62" y2="32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="6" y1="32" x2="2" y2="32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="card-title">Room Light</div>
+            <div class="card-subtitle" id="lightSubtitle">Tap to turn on</div>
+          </div>
+          <div class="status-pill" id="lightPill">OFF</div>
+        </div>
+        <button class="big-toggle" id="lightBtn" onclick="toggleLight()">
+          <span class="toggle-track" id="lightTrack">
+            <span class="toggle-thumb" id="lightThumb"></span>
+          </span>
+          <span id="lightBtnLabel">Turn ON</span>
+        </button>
+        <div class="voice-hint">🎙️ <em>"Turn on the light"</em></div>
+      </div>
+
+      <!-- FAN CARD -->
+      <div class="dash-card fan-card" id="fanCard">
+        <div class="card-glow fan-glow" id="fanGlow"></div>
+        <div class="card-header">
+          <div class="card-icon-wrap fan-icon-wrap">
+            <div class="fan-blade-wrap" id="fanBladeWrap">
+              <svg viewBox="0 0 64 64" width="48" height="48" id="fanSVG">
+                <g id="fanBlades" style="transform-origin:32px 32px">
+                  <ellipse cx="32" cy="16" rx="7" ry="14" fill="currentColor" opacity="0.85" transform="rotate(0,32,32)"/>
+                  <ellipse cx="32" cy="16" rx="7" ry="14" fill="currentColor" opacity="0.85" transform="rotate(90,32,32)"/>
+                  <ellipse cx="32" cy="16" rx="7" ry="14" fill="currentColor" opacity="0.85" transform="rotate(180,32,32)"/>
+                  <ellipse cx="32" cy="16" rx="7" ry="14" fill="currentColor" opacity="0.85" transform="rotate(270,32,32)"/>
+                </g>
+                <circle cx="32" cy="32" r="6" fill="currentColor"/>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <div class="card-title">Ceiling Fan</div>
+            <div class="card-subtitle" id="fanSubtitle">Speed: OFF</div>
+          </div>
+          <div class="status-pill" id="fanPill">OFF</div>
+        </div>
+        <div class="speed-display">
+          <div class="speed-arc-wrap">
+            <svg viewBox="0 0 120 70" width="160" height="90">
+              <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="var(--border)" stroke-width="8" stroke-linecap="round"/>
+              <path id="fanArcFill" d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round"
+                stroke-dasharray="173" stroke-dashoffset="173" style="transition:stroke-dashoffset 0.5s ease"/>
+            </svg>
+            <div class="speed-num" id="fanSpeedNum">0</div>
+            <div class="speed-label-arc">Speed</div>
+          </div>
+        </div>
+        <div class="fan-levels">
+          <button class="level-btn active" onclick="setFan(0)" id="fanL0">OFF</button>
+          <button class="level-btn" onclick="setFan(1)" id="fanL1">1</button>
+          <button class="level-btn" onclick="setFan(2)" id="fanL2">2</button>
+          <button class="level-btn" onclick="setFan(3)" id="fanL3">3</button>
+          <button class="level-btn" onclick="setFan(4)" id="fanL4">4</button>
+          <button class="level-btn" onclick="setFan(5)" id="fanL5">5</button>
+        </div>
+        <div class="voice-hint">🎙️ <em>"Set fan to level 3"</em></div>
+      </div>
+
+      <!-- SOS CARD -->
+      <div class="dash-card sos-card">
+        <div class="sos-ring-wrap">
+          <div class="sos-ring r1"></div>
+          <div class="sos-ring r2"></div>
+          <div class="sos-ring r3"></div>
+          <div class="sos-center">🆘</div>
+        </div>
+        <div class="card-title" style="text-align:center;margin-top:10px">Emergency Alert</div>
+        <p style="color:var(--text2);font-size:0.84rem;text-align:center;line-height:1.6;margin:10px 0 16px">Instantly notifies caregivers with a push alert via Firebase.</p>
+        <button class="emergency-btn" id="sosBtn" onclick="triggerSOS()">🆘 SEND SOS ALERT</button>
+        <p style="font-size:0.75rem;color:var(--text2);text-align:center;margin-top:12px">Use only in emergencies</p>
+      </div>
+    </div>
+
+    <!-- BOTTOM ROW: STATUS + VOICE -->
+    <div class="dash-bottom-row">
+
+      <!-- STATUS CARD -->
+      <div class="dash-card status-card">
+        <div class="card-header" style="margin-bottom:18px">
+          <div class="card-title">📊 System Status</div>
+          <div class="online-badge"><span class="online-dot"></span> ONLINE</div>
+        </div>
+        <div class="status-rows">
+          <div class="status-row"><span>Wi-Fi Signal</span><span class="sval green" id="statusWifi">-48 dBm ●●●●</span></div>
+          <div class="status-row"><span>Firebase Sync</span><span class="sval" id="statusFirebase" style="color:var(--yellow)">Demo Mode</span></div>
+          <div class="status-row"><span>ESP32 Board</span><span class="sval" id="statusESP32" style="color:var(--yellow)">Not Connected</span></div>
+          <div class="status-row"><span>Relay Module</span><span class="sval" id="statusRelay" style="color:var(--yellow)">Not Connected</span></div>
+          <div class="status-row"><span>Last Action</span><span class="sval" id="lastSync">—</span></div>
+        </div>
+        <div style="margin-top:18px">
+          <div style="font-size:0.78rem;color:var(--text2);margin-bottom:8px;font-weight:600">Live Data Activity</div>
+          <div class="data-bars">
+            <div class="data-bar" style="--h:60%;animation-delay:0s"></div>
+            <div class="data-bar" style="--h:85%;animation-delay:0.15s"></div>
+            <div class="data-bar" style="--h:40%;animation-delay:0.3s"></div>
+            <div class="data-bar" style="--h:95%;animation-delay:0.45s"></div>
+            <div class="data-bar" style="--h:55%;animation-delay:0.6s"></div>
+            <div class="data-bar" style="--h:70%;animation-delay:0.75s"></div>
+            <div class="data-bar" style="--h:45%;animation-delay:0.9s"></div>
+            <div class="data-bar" style="--h:80%;animation-delay:1.05s"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VOICE CARD -->
+      <div class="dash-card voice-card">
+        <div class="card-header" style="margin-bottom:18px">
+          <div class="card-title">🎙️ Voice Control</div>
+          <div id="voiceStatus" class="voice-pill">● IDLE</div>
+        </div>
+        <div class="mic-area">
+          <button class="mic-btn" id="voiceBtn" onclick="toggleVoice()">
+            <div class="mic-rings">
+              <div class="mic-ring mr1" id="mr1"></div>
+              <div class="mic-ring mr2" id="mr2"></div>
+            </div>
+            <div class="mic-icon">🎙️</div>
+          </button>
+          <div id="waveform" class="waveform">
+            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <div id="transcript" class="transcript-box">Say a command or tap a chip below...</div>
+        <div id="voiceResult" class="voice-result"></div>
+        <div class="chip-grid">
+          <span class="v-chip" onclick="simulateVoice('turn on the light')">"Light ON"</span>
+          <span class="v-chip" onclick="simulateVoice('turn off the light')">"Light OFF"</span>
+          <span class="v-chip" onclick="simulateVoice('set fan to level 3')">"Fan Level 3"</span>
+          <span class="v-chip" onclick="simulateVoice('set fan to level 5')">"Fan Level 5"</span>
+          <span class="v-chip" onclick="simulateVoice('fan off')">"Fan OFF"</span>
+          <span class="v-chip" onclick="simulateVoice('send sos')">"Send SOS"</span>
+          <span class="v-chip" onclick="simulateVoice('turn off all')">"All OFF"</span>
+          <span class="v-chip" onclick="simulateVoice('turn on all')">"All ON"</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     CONTACT
+══════════════════════════════════════════ -->
+<section id="contact">
+  <div class="reveal">
+    <div class="section-tag">Contact Us</div>
+    <h2 class="section-title">Get In Touch</h2>
+    <p class="section-sub">Have questions about the project? Send us a message and we'll reply to your email directly.</p>
+  </div>
+  <div class="contact-grid reveal">
+    <div class="contact-form">
+      <h3 style="font-family:'Sora',sans-serif;font-weight:700;margin-bottom:6px;font-size:1.15rem">Send a Message</h3>
+      <p style="font-size:0.83rem;color:var(--text2);margin-bottom:24px;">Messages go directly to <strong>nithin.ise24@cmrit.ac.in</strong> via Formspree 📬</p>
+
+      <div id="formSuccess" style="display:none;background:rgba(15,163,110,0.1);border:1.5px solid rgba(15,163,110,0.35);border-radius:12px;padding:16px 18px;margin-bottom:20px;color:var(--green);font-weight:600;font-size:0.93rem;">
+        ✅ Message sent! We'll reply to your email within 24 hours.
+      </div>
+      <div id="formError" style="display:none;background:rgba(224,62,62,0.1);border:1.5px solid rgba(224,62,62,0.3);border-radius:12px;padding:16px 18px;margin-bottom:20px;color:var(--red);font-weight:600;font-size:0.93rem;">
+        ❌ Something went wrong. Please try emailing us directly.
+      </div>
+
+      <form id="contactForm" onsubmit="handleFormSubmit(event)">
+        <input type="text" name="_gotcha" style="display:none">
+        <div class="form-group">
+          <label for="fname">Your Name <span style="color:var(--red)">*</span></label>
+          <input type="text" id="fname" name="name" placeholder="Enter your full name" required>
+        </div>
+        <div class="form-group">
+          <label for="femail">Email Address <span style="color:var(--red)">*</span></label>
+          <input type="email" id="femail" name="email" placeholder="your@email.com" required>
+        </div>
+        <div class="form-group">
+          <label for="fsubject">Subject <span style="color:var(--red)">*</span></label>
+          <input type="text" id="fsubject" name="subject" placeholder="Project inquiry..." required>
+        </div>
+        <div class="form-group">
+          <label for="fmessage">Message <span style="color:var(--red)">*</span></label>
+          <textarea id="fmessage" name="message" placeholder="Write your message here..." required></textarea>
+        </div>
+        <button class="btn-primary" id="submitBtn" type="submit" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;">
+          <span id="submitBtnText">Send Message →</span>
+          <span id="submitSpinner" style="display:none;width:18px;height:18px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;"></span>
+        </button>
+      </form>
+    </div>
+
+    <div class="contact-info">
+      <div class="info-item">
+        <div class="info-icon">📧</div>
+        <div class="info-text">
+          <strong>Email</strong>
+          nithin.ise24@cmrit.ac.in
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-icon">📞</div>
+        <div class="info-text">
+          <strong>Phone</strong>
+          +91 63622 18469
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-icon">📬</div>
+        <div class="info-text">
+          <strong>How it works</strong>
+          Visitor fills form → Formspree sends email → lands in your inbox instantly
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-icon">⏱️</div>
+        <div class="info-text">
+          <strong>Response Time</strong>
+          We typically reply within 24 hours
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════ -->
+<footer>
+  <p>© 2026 <strong>SmartRoom – IoT Assistive Control System</strong></p>
+  <p style="margin-top:6px;font-size:0.8rem">Built with ❤️ for accessibility and independence</p>
+</footer>
+
+<!-- NOTIFICATION -->
+<div class="notif" id="notif"></div>
+
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════ -->
+<script>
+/* ════════════════════════════════════════
+   THEME & ACCESSIBILITY
+════════════════════════════════════════ */
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isDark ? '🌙' : '☀️';
+}
+
+let accessOn = false;
+function toggleAccessibility() {
+  accessOn = !accessOn;
+  document.documentElement.setAttribute('data-accessible', accessOn);
+  const btn = document.getElementById('accessBtn');
+  btn.style.background = accessOn ? 'var(--accent)' : '';
+  btn.style.color = accessOn ? '#fff' : '';
+  showNotif(accessOn ? '♿ Accessibility mode ON — larger text & buttons' : 'Accessibility mode OFF');
+}
+
+/* ════════════════════════════════════════
+   NAV
+════════════════════════════════════════ */
+function toggleMenu() { document.getElementById('navLinks').classList.toggle('open'); }
+function closeMenu()  { document.getElementById('navLinks').classList.remove('open'); }
+
+/* ════════════════════════════════════════
+   DEVICE STATE
+════════════════════════════════════════ */
+let lightOn  = false;
+let fanLevel = 0;
+
+/* ════════════════════════════════════════
+   LIGHT
+════════════════════════════════════════ */
+function toggleLight() {
+  lightOn = !lightOn;
+  applyLightUI(lightOn);
+  fbSet('smartroom/light/state', lightOn);
+  updateSync();
+  showNotif(lightOn ? '💡 Light turned ON — syncing to ESP32…' : '💡 Light turned OFF — syncing to ESP32…');
+}
+
+function applyLightUI(state) {
+  document.getElementById('lightCard').classList.toggle('on', state);
+  document.getElementById('lightGlow').classList.toggle('on', state);
+  document.getElementById('lightBtn').classList.toggle('on', state);
+  document.getElementById('lightPill').classList.toggle('on', state);
+  document.getElementById('lightPill').textContent    = state ? 'ON' : 'OFF';
+  document.getElementById('lightSubtitle').textContent = state ? 'Currently ON ✓' : 'Tap to turn on';
+  document.getElementById('lightBtnLabel').textContent = state ? 'Turn OFF' : 'Turn ON';
+}
+
+/* ════════════════════════════════════════
+   FAN
+════════════════════════════════════════ */
+function setFan(level) {
+  fanLevel = level;
+  applyFanUI(level);
+  fbSet('smartroom/fan/speed', level);
+  updateSync();
+  showNotif(level > 0 ? '🌀 Fan Level ' + level + ' — syncing to ESP32…' : '🌀 Fan OFF — syncing to ESP32…');
+}
+
+function applyFanUI(level) {
+  for (let i = 0; i <= 5; i++) {
+    document.getElementById('fanL' + i).className = 'level-btn' + (i === level ? ' active' : '');
+  }
+  const spinClasses = ['', 'spinning-1', 'spinning-2', 'spinning-3', 'spinning-4', 'spinning-5'];
+  document.getElementById('fanCard').classList.toggle('on', level > 0);
+  document.getElementById('fanGlow').classList.toggle('on', level > 0);
+  document.getElementById('fanPill').classList.toggle('on', level > 0);
+  document.getElementById('fanPill').textContent    = level > 0 ? 'ON' : 'OFF';
+  document.getElementById('fanSubtitle').textContent = level > 0 ? `Speed: Level ${level}` : 'Speed: OFF';
+  document.getElementById('fanBladeWrap').className  = 'fan-blade-wrap' + (level > 0 ? ' ' + spinClasses[level] : '');
+
+  const offset = 173 - (173 * level / 5);
+  const arcEl  = document.getElementById('fanArcFill');
+  arcEl.style.strokeDashoffset = offset;
+  arcEl.style.stroke = level === 0 ? 'var(--border)' : level <= 2 ? '#0fa36e' : level <= 4 ? 'var(--accent)' : '#e03e3e';
+  document.getElementById('fanSpeedNum').textContent = level;
+}
+
+/* ════════════════════════════════════════
+   SOS
+════════════════════════════════════════ */
+function triggerSOS() {
+  fbSet('smartroom/sos/triggered', true);
+  fbSet('smartroom/sos/timestamp', new Date().toISOString());
+  showNotif('🚨 SOS Alert SENT! ESP32 & caregivers notified.');
+  const btn = document.getElementById('sosBtn');
+  btn.style.animation = 'none';
+  void btn.offsetWidth; // force reflow
+  btn.style.animation = '';
+  setTimeout(() => fbSet('smartroom/sos/triggered', false), 10000);
+}
+
+/* ════════════════════════════════════════
+   CONTACT FORM (Formspree)
+════════════════════════════════════════ */
+async function handleFormSubmit(e) {
+  e.preventDefault();
+
+  // ⚠️ Replace with your actual Formspree form ID from formspree.io
+  const FORMSPREE_ID = 'mlgaylrn';
+
+  const btn     = document.getElementById('submitBtn');
+  const btnText = document.getElementById('submitBtnText');
+  const spinner = document.getElementById('submitSpinner');
+  const success = document.getElementById('formSuccess');
+  const error   = document.getElementById('formError');
+  const form    = document.getElementById('contactForm');
+
+  btn.disabled       = true;
+  btnText.textContent = 'Sending...';
+  spinner.style.display = 'inline-block';
+  success.style.display = 'none';
+  error.style.display   = 'none';
+
+  try {
+    const res = await fetch(`https://formspree.io/f/${FORMSPREE_ID}`, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (res.ok) {
+      success.style.display = 'block';
+      form.reset();
+      showNotif('📬 Message sent to nithin.ise24@cmrit.ac.in!');
+    } else {
+      const json = await res.json();
+      error.textContent = '❌ ' + (json.errors?.map(e => e.message).join(', ') || 'Failed to send. Please email us directly.');
+      error.style.display = 'block';
+    }
+  } catch (err) {
+    error.textContent = '❌ Network error. Please email us at nithin.ise24@cmrit.ac.in';
+    error.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btnText.textContent = 'Send Message →';
+    spinner.style.display = 'none';
+  }
+}
+
+/* ════════════════════════════════════════
+   FIREBASE REAL-TIME BACKEND
+   ─────────────────────────────────────
+   STEP 1: Go to https://console.firebase.google.com
+   STEP 2: Create a project → Realtime Database
+   STEP 3: Copy your config below
+   STEP 4: Set rules to allow read/write (for dev):
+           { "rules": { ".read": true, ".write": true } }
+════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+let db = null;
+let firebaseReady = false;
+
+function initFirebase() {
+  const banner     = document.getElementById('firebaseBanner');
+  const bannerText = document.getElementById('firebaseBannerText');
+
+  if (firebaseConfig.apiKey === 'YOUR_API_KEY') {
+    // Demo mode — banner already shows warning
+    updateStatusUI(false);
+    return;
+  }
+
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    firebaseReady = true;
+
+    // Update banner to success
+    banner.style.background   = 'rgba(15,163,110,0.08)';
+    banner.style.borderColor  = 'rgba(15,163,110,0.3)';
+    banner.style.color        = 'var(--green)';
+    bannerText.textContent    = '🔥 Firebase connected — Real-time sync active with ESP32!';
+
+    updateStatusUI(true);
+    listenToFirebase();
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    bannerText.textContent = '❌ Firebase config error: ' + e.message;
+    updateStatusUI(false);
+  }
+}
+
+function updateStatusUI(connected) {
+  const fb    = document.getElementById('statusFirebase');
+  const esp   = document.getElementById('statusESP32');
+  const relay = document.getElementById('statusRelay');
+  if (connected) {
+    fb.textContent = 'Connected ✓'; fb.style.color = 'var(--green)';
+  } else {
+    fb.textContent = 'Demo Mode';   fb.style.color = 'var(--yellow)';
+    esp.textContent = 'Not Connected'; esp.style.color = 'var(--yellow)';
+    relay.textContent = 'Not Connected'; relay.style.color = 'var(--yellow)';
+  }
+}
+
+function listenToFirebase() {
+  if (!db) return;
+
+  // Light state — ESP32 can change this too (e.g. physical button)
+  db.ref('smartroom/light/state').on('value', snap => {
+    const val = snap.val();
+    if (val === null) return;
+    if (val !== lightOn) { lightOn = val; applyLightUI(lightOn); }
+    setLastSync();
+  });
+
+  // Fan speed
+  db.ref('smartroom/fan/speed').on('value', snap => {
+    const val = snap.val();
+    if (val === null) return;
+    if (val !== fanLevel) { fanLevel = val; applyFanUI(fanLevel); }
+    setLastSync();
+  });
+
+  // ESP32 online status
+  db.ref('smartroom/esp32/online').on('value', snap => {
+    const online  = snap.val();
+    const espEl   = document.getElementById('statusESP32');
+    const relayEl = document.getElementById('statusRelay');
+    if (online) {
+      espEl.textContent   = 'Running ✓'; espEl.style.color   = 'var(--green)';
+      relayEl.textContent = 'Active ✓';  relayEl.style.color = 'var(--green)';
+    } else {
+      espEl.textContent   = 'Offline'; espEl.style.color   = 'var(--red)';
+      relayEl.textContent = 'Offline'; relayEl.style.color = 'var(--red)';
+    }
+  });
+
+  // ESP32 last seen timestamp
+  db.ref('smartroom/esp32/lastSeen').on('value', snap => {
+    const ts = snap.val();
+    if (ts) document.getElementById('lastSync').textContent = new Date(ts).toLocaleTimeString();
+  });
+
+  // SOS triggered by physical button on ESP32
+  db.ref('smartroom/sos/triggered').on('value', snap => {
+    if (snap.val() === true) {
+      showNotif('🚨 SOS triggered from ESP32 device!');
+      db.ref('smartroom/sos/triggered').set(false);
+    }
+  });
+}
+
+function fbSet(path, value) {
+  if (!firebaseReady || !db) return;
+  db.ref(path).set(value).catch(e => console.warn('Firebase write error:', e));
+}
+
+function setLastSync() {
+  document.getElementById('lastSync').textContent = new Date().toLocaleTimeString();
+}
+
+function updateSync() {
+  if (firebaseReady) { setLastSync(); return; }
+  // Demo mode: show relative time
+  document.getElementById('lastSync').textContent = 'Just now';
+  let sec = 0;
+  const iv = setInterval(() => {
+    sec++;
+    const el = document.getElementById('lastSync');
+    el.textContent = sec < 60 ? sec + 's ago' : Math.floor(sec / 60) + 'm ago';
+    if (sec > 300) clearInterval(iv);
+  }, 1000);
+}
+
+window.addEventListener('DOMContentLoaded', initFirebase);
+
+/* ════════════════════════════════════════
+   NOTIFICATION
+════════════════════════════════════════ */
+let notifTimeout;
+function showNotif(msg) {
+  const n = document.getElementById('notif');
+  n.textContent = msg;
+  n.classList.add('show');
+  clearTimeout(notifTimeout);
+  notifTimeout = setTimeout(() => n.classList.remove('show'), 3000);
+}
+
+/* ════════════════════════════════════════
+   VOICE CONTROL
+════════════════════════════════════════ */
+let recognition = null;
+let isListening = false;
+
+function processVoiceCommand(text) {
+  const cmd = text.toLowerCase().trim();
+  document.getElementById('transcript').textContent = '🗣️ "' + text + '"';
+  document.getElementById('transcript').style.color = 'var(--text)';
+  let result = '';
+
+  if (cmd.includes('turn on') && cmd.includes('light')) {
+    if (!lightOn) toggleLight();
+    result = '✅ Light turned ON';
+  } else if ((cmd.includes('turn off') && cmd.includes('light')) || cmd.includes('light off')) {
+    if (lightOn) toggleLight();
+    result = '✅ Light turned OFF';
+  } else if (cmd.includes('fan off') || (cmd.includes('turn off') && cmd.includes('fan'))) {
+    setFan(0);
+    result = '✅ Fan turned OFF';
+  } else if (cmd.includes('fan') && cmd.includes('level')) {
+    const match = cmd.match(/level\s*([1-5])/);
+    if (match) { setFan(parseInt(match[1])); result = '✅ Fan set to Level ' + match[1]; }
+    else result = '⚠️ Please say "Set fan to level 1–5"';
+  } else if (cmd.includes('set fan') || cmd.includes('fan speed')) {
+    const match = cmd.match(/([1-5])/);
+    if (match) { setFan(parseInt(match[1])); result = '✅ Fan set to Level ' + match[1]; }
+    else result = '⚠️ Please say a level from 1 to 5';
+  } else if (cmd.includes('sos') || cmd.includes('emergency') || cmd.includes('help')) {
+    triggerSOS();
+    result = '🚨 SOS Alert Sent!';
+  } else if (cmd.includes('turn off all') || cmd.includes('off all')) {
+    if (lightOn) toggleLight();
+    setFan(0);
+    result = '✅ All devices turned OFF';
+  } else if (cmd.includes('turn on all')) {
+    if (!lightOn) toggleLight();
+    setFan(3);
+    result = '✅ Light ON + Fan set to Level 3';
+  } else {
+    result = '⚠️ Command not recognized. Try "Turn on the light" or "Set fan to level 3"';
+  }
+
+  document.getElementById('voiceResult').textContent = result;
+}
+
+function simulateVoice(cmd) { processVoiceCommand(cmd); }
+
+function setVoiceIdle() {
+  isListening = false;
+  document.getElementById('voiceBtn').classList.remove('active');
+  document.getElementById('voiceBtn').querySelector('.mic-icon').textContent = '🎙️';
+  document.getElementById('voiceStatus').textContent = '● IDLE';
+  document.getElementById('voiceStatus').classList.remove('listening');
+  document.getElementById('waveform').classList.remove('active');
+  document.getElementById('transcript').classList.remove('active');
+}
+
+async function toggleVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showNotif('⚠️ Speech Recognition not supported. Use Google Chrome.');
+    document.getElementById('voiceResult').textContent = '⚠️ Use Google Chrome for voice control.';
+    return;
+  }
+  if (isListening) { recognition.abort(); setVoiceIdle(); return; }
+
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(err) {
+    showNotif('🎙️ Microphone access denied.');
+    document.getElementById('voiceResult').textContent = '❌ Mic permission denied. Click 🔒 in address bar → allow Microphone.';
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    isListening = true;
+    document.getElementById('voiceBtn').classList.add('active');
+    document.getElementById('voiceBtn').querySelector('.mic-icon').textContent = '⏹️';
+    document.getElementById('voiceStatus').textContent = '● LISTENING';
+    document.getElementById('voiceStatus').classList.add('listening');
+    document.getElementById('transcript').textContent = 'Listening... speak now 🎙️';
+    document.getElementById('transcript').classList.add('active');
+    document.getElementById('waveform').classList.add('active');
+    document.getElementById('voiceResult').textContent = '';
+    showNotif('🎙️ Mic is ON — speak your command!');
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    document.getElementById('transcript').textContent = '🗣️ ' + (final || interim);
+    if (final) processVoiceCommand(final);
+  };
+
+  recognition.onend = () => { if (isListening) recognition.start(); };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech') return;
+    if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+      showNotif('❌ Mic blocked. Allow microphone in browser settings.');
+      document.getElementById('voiceResult').textContent = '❌ Mic blocked — click 🔒 → allow Microphone.';
+    } else if (e.error === 'network') {
+      showNotif('⚠️ Network error. Voice needs internet.');
+      document.getElementById('voiceResult').textContent = '⚠️ Network error — check your connection.';
+    } else {
+      showNotif('🎙️ Error: ' + e.error);
+    }
+    setVoiceIdle();
+  };
+
+  try { recognition.start(); }
+  catch(e) { showNotif('⚠️ Could not start mic: ' + e.message); setVoiceIdle(); }
+}
+
+/* ════════════════════════════════════════
+   SCROLL REVEAL
+════════════════════════════════════════ */
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+/* ════════════════════════════════════════
+   SCROLL PROGRESS BAR
+════════════════════════════════════════ */
+window.addEventListener('scroll', () => {
+  const pct = (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100;
+  document.getElementById('scrollBar').style.width = pct + '%';
+});
+
+/* ════════════════════════════════════════
+   FLOATING PARTICLES
+════════════════════════════════════════ */
+(function spawnParticles() {
+  const container = document.getElementById('particles');
+  const colors = [
+    'rgba(26,111,232,0.18)', 'rgba(0,153,255,0.15)',
+    'rgba(15,163,110,0.12)', 'rgba(74,158,255,0.12)'
+  ];
+  for (let i = 0; i < 22; i++) {
+    const p    = document.createElement('div');
+    const size = Math.random() * 18 + 6;
+    p.className = 'particle';
+    p.style.cssText = `
+      width:${size}px; height:${size}px;
+      left:${Math.random() * 100}%;
+      background:${colors[Math.floor(Math.random() * colors.length)]};
+      animation-delay:${Math.random() * 8}s;
+      animation-duration:${6 + Math.random() * 8}s;
+    `;
+    container.appendChild(p);
+  }
+})();
+
+/* ════════════════════════════════════════
+   TYPEWRITER HERO
+════════════════════════════════════════ */
+(function typeWriter() {
+  const el = document.querySelector('.hero h1');
+  if (!el) return;
+  const raw         = 'Smart Room for';
+  const highlighted = '<span class="highlight">Assistive Needs</span>';
+  let typed = '';
+  let i = 0;
+  el.innerHTML = '';
+  const iv = setInterval(() => {
+    if (i < raw.length) {
+      typed += raw[i++];
+      el.innerHTML = typed + '<br>' + highlighted;
+    } else {
+      clearInterval(iv);
+      const cursor = document.createElement('span');
+      cursor.className = 'cursor';
+      el.appendChild(document.createElement('br'));
+      el.appendChild(cursor);
+      setTimeout(() => cursor.remove(), 4000);
+    }
+  }, 60);
+})();
+
+/* ════════════════════════════════════════
+   3D CARD TILT
+════════════════════════════════════════ */
+document.querySelectorAll('.dash-card').forEach(card => {
+  card.addEventListener('mousemove', (e) => {
+    const r   = card.getBoundingClientRect();
+    const tiltX = ((e.clientY - r.top  - r.height / 2) / r.height) * 8;
+    const tiltY = ((e.clientX - r.left - r.width  / 2) / r.width) * -8;
+    card.style.transform = `translateY(-5px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`;
+    card.style.transition = 'transform 0.1s ease';
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.transform = '';
+    card.style.transition = 'transform 0.4s ease, box-shadow 0.3s ease';
+  });
+});
+document.querySelectorAll('.feature-card, .about-card').forEach(card => {
+  card.addEventListener('mousemove', (e) => {
+    const r = card.getBoundingClientRect();
+    card.style.transform = `translateY(-4px) rotateX(${((e.clientY - r.top - r.height/2)/r.height)*5}deg) rotateY(${((e.clientX - r.left - r.width/2)/r.width)*-5}deg)`;
+    card.style.transition = 'transform 0.1s ease';
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.transform = '';
+    card.style.transition = 'transform 0.4s ease';
+  });
+});
+
+/* ════════════════════════════════════════
+   RIPPLE EFFECT
+════════════════════════════════════════ */
+document.querySelectorAll('.btn-primary, .btn-outline, .big-toggle, .emergency-btn, .mic-btn').forEach(btn => {
+  btn.addEventListener('click', function(e) {
+    const ripple = document.createElement('span');
+    const rect   = this.getBoundingClientRect();
+    const size   = Math.max(rect.width, rect.height);
+    ripple.style.cssText = `
+      position:absolute; border-radius:50%;
+      width:${size}px; height:${size}px;
+      left:${e.clientX - rect.left - size/2}px;
+      top:${e.clientY - rect.top  - size/2}px;
+      background:rgba(255,255,255,0.3);
+      transform:scale(0); animation:rippleAnim 0.6s ease-out forwards;
+      pointer-events:none;
+    `;
+    if (getComputedStyle(this).position === 'static') this.style.position = 'relative';
+    this.style.overflow = 'hidden';
+    this.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 700);
+  });
+});
+
+/* ════════════════════════════════════════
+   INJECT DYNAMIC KEYFRAMES
+════════════════════════════════════════ */
+const dynStyle = document.createElement('style');
+dynStyle.textContent = `
+  @keyframes rippleAnim { to { transform:scale(2.5); opacity:0; } }
+  @keyframes nodePop    { 0%{transform:scale(1)} 40%{transform:scale(1.12)} 100%{transform:scale(1.04)} }
+`;
+document.head.appendChild(dynStyle);
+</script>
+
+</body>
+</html>
