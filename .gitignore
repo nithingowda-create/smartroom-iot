@@ -1,5 +1,35 @@
+# Environment variables (NEVER upload this - contains passwords)
 .env
+
+# Python cache files
 __pycache__/
 *.pyc
-.DS_Store
+*.pyo
+*.pyd
+
+# Virtual environment folders
 venv/
+env/
+.venv/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code settings
+.vscode/
+
+# PyCharm settings
+.idea/
+
+# Log files
+*.log
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
